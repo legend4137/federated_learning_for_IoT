@@ -10,7 +10,6 @@ from unsupervised_data import get_client_unsupervised_initial_splitting
 
 def main(setup: str, collaborative: bool):
     Ctp.set_automatic_skip(True)
-    # Grid-search removed: always present as TESTING mode
     Ctp.print('\n\t\t\t\t\t' + "FEDAVG" + ' ' + setup.upper() + ' ' + "AUTOENCODER"
               + ' TESTING\n', bold=True)
 

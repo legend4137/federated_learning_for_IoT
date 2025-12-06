@@ -3,6 +3,8 @@ from time import time
 from types import SimpleNamespace
 from typing import Callable, Tuple, List, Dict, Optional
 
+import os
+import torch
 import numpy as np
 from context_printer import ContextPrinter as Ctp, Color
 
@@ -23,12 +25,30 @@ def compute_rerun_results(clients_train_val: FederationData, clients_test: Feder
         Ctp.enter_section('Run [{}/{}]'.format(run_id + 1, params.n_random_reruns), Color.GRAY)
 
         start_time = time()
-        result = fedavg_autoencoders_train_test(clients_train_val, clients_test, test_devices_data, params=params)
-        local_results.append(result[0])
-        new_devices_results.append(result[1])
-        threshold = result[2]
-
+        (local_result,
+         new_result,
+         threshold,
+         global_model,
+         global_threshold) = fedavg_autoencoders_train_test(clients_train_val, clients_test, test_devices_data, params=params)
+        local_results.append(local_result)
+        new_devices_results.append(new_result)
         thresholds.append(threshold)
+
+        # --- SAVE MODEL + THRESHOLD FOR THIS RERUN ---
+        if hasattr(params, 'results_path'):
+            cfg_id = getattr(params, 'configuration_id', 0)
+            base_name = f"config_{cfg_id}_run_{run_id}"
+
+            model_path = os.path.join(params.results_path, f"global_model_{base_name}.pth")
+            threshold_path = os.path.join(params.results_path, f"global_threshold_{base_name}.pth")
+
+            torch.save(global_model.state_dict(), model_path)
+            torch.save(global_threshold.state_dict(), threshold_path)
+
+            Ctp.print(f"Saved global model to: {model_path}", color=Color.YELLOW)
+            Ctp.print(f"Saved global threshold to: {threshold_path}", color=Color.YELLOW)
+        # ------------------------------------------------
+
         Ctp.print("Elapsed time: {:.1f} seconds".format(time() - start_time))
         Ctp.exit_section()
     return local_results, new_devices_results, thresholds
@@ -38,9 +58,12 @@ def compute_rerun_results(clients_train_val: FederationData, clients_test: Feder
 def test_hyperparameters(all_data: List[DeviceData], setup: str, splitting_function: Callable,
                          constant_params: dict, configurations_params: List[dict], configurations: List[Dict[str, list]]) -> None:
     # Create the path in which we store the results
-    base_path = 'test_results/' + setup + '_' + "autoencoder" + '_' + "fedavg_varshit_1_config" + '/run_'
+    base_path = 'test_results/' + setup + '_' + "autoencoder" + '_' + "fedavg_varshit_save_model_config" + '/run_'
+    results_path = create_new_numbered_dir(base_path)
 
     params_dict = deepcopy(constant_params)
+    params_dict['results_path'] = results_path
+
     local_results, new_devices_results, thresholds = {}, {}, {}
 
     for j, (configuration, configuration_params) in enumerate(zip(configurations, configurations_params)):
@@ -50,6 +73,8 @@ def test_hyperparameters(all_data: List[DeviceData], setup: str, splitting_funct
                                                                 p_test=params_dict['p_test'], p_unused=params_dict['p_unused'])
         params_dict.update(configuration)  # Update the constant hyper-parameters with the dict containing the configuration setup
         params_dict.update(configuration_params)  # Update the hyper-parameters with the configuration-specific hyper-parameters
+        params_dict['configuration_id'] = j             # to distinguish configs when saving models
+
         params = SimpleNamespace(**params_dict)
         Ctp.enter_section('Configuration [{}/{}]: '.format(j + 1, len(configurations)) + str(configuration), Color.NONE)
         local_result, new_result, threshold = compute_rerun_results(clients_train_val, clients_test, test_devices_data, params)
@@ -58,5 +83,4 @@ def test_hyperparameters(all_data: List[DeviceData], setup: str, splitting_funct
         Ctp.exit_section()
 
     # We save the results in a json file
-    results_path = create_new_numbered_dir(base_path)
     save_results_test(results_path, local_results, new_devices_results, thresholds, constant_params, configurations_params)

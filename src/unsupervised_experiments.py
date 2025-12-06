@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from typing import Tuple, List, Dict
 
+import os
 import torch
 from context_printer import Color
 from context_printer import ContextPrinter as Ctp
@@ -85,5 +86,20 @@ def fedavg_autoencoders_train_test(train_val_data: FederationData, local_test_da
 
         Ctp.exit_section()
 
-    return local_results, new_devices_results, global_thresholds
+    # --- SAVE GLOBAL MODEL AFTER TRAINING ---
+    # save_dir = params.output_dir if hasattr(params, 'output_dir') else "saved_models"
+    # os.makedirs(save_dir, exist_ok=True)
+
+    # model_path = os.path.join(save_dir, "global_model_final.pth")
+    # threshold_path = os.path.join(save_dir, "global_threshold_final.pth")
+
+    # torch.save(global_model.state_dict(), model_path)
+    # torch.save(global_threshold.state_dict(), threshold_path)
+
+    # Ctp.print(f"Saved final global model to: {model_path}", color=Color.YELLOW)
+    # Ctp.print(f"Saved final global threshold to: {threshold_path}", color=Color.YELLOW)
+    # ----------------------------------------
+
+    return local_results, new_devices_results, global_thresholds, global_model, global_threshold
+
 
