@@ -74,6 +74,15 @@ def main(setup: str, collaborative: bool):
     federation_params.update(fedavg_params)
     Ctp.print("Federation params: {}".format(federation_params), color='blue')
 
+    poisoning_params = {'n_malicious': 0,
+                        'data_poisoning': None,
+                        'p_poison': None,
+                        'model_update_factor': 1.0,
+                        'model_poisoning': None}
+
+    if poisoning_params['n_malicious'] != 0:
+        Ctp.print("Poisoning params: {}".format(poisoning_params), color='red')
+
     # 9 configurations in which we have 8 clients (each one owns the data from 1 device) and the data from the last device is left unseen.
     # decentralized_configurations = [{'clients_devices': [[i] for i in range(n_devices) if i != test_device],
     #                                  'test_devices': [test_device]} for test_device in range(n_devices)]

@@ -1,6 +1,9 @@
 import argparse
 import json
 import os
+import time
+from memory_profiler import profile
+from ptflops import get_model_complexity_info
 
 import numpy as np
 import pandas as pd
@@ -117,7 +120,7 @@ def load_data(data_path: str, has_label: bool):
 
     return X, y
 
-
+@profile
 def run_inference(
     model,
     threshold_value: float,
@@ -229,7 +232,23 @@ def main():
                 f"WARNING: Data has {X.shape[1]} features but n_features in constant_params is {expected}."
             )
 
+    # Assuming your input is a flat vector of size n_features
+    n_features = constant_params["n_features"]
+
+    with torch.cuda.device(device) if device.type == "cuda" else torch.device("cpu"):
+        macs, params = get_model_complexity_info(
+            global_model,
+            (n_features,),       # single sample, shape (n_features,)
+            as_strings=False,
+            verbose=False,
+        )
+
+    print(f"Model params: {params:.0f}")
+    print(f"MACs per sample (approx): {macs:.0f}")
+    print(f"FLOPs per sample (approx): {2 * macs:.0f}")
+
     # Run inference
+    t0 = time.perf_counter()
     errors, preds = run_inference(
         global_model,
         threshold_value,
@@ -237,9 +256,13 @@ def main():
         device,
         batch_size=args.batch_size,
     )
+    t1 = time.perf_counter()
 
     print("\nInference completed.")
-    print(f"Threshold: {threshold_value:.6f}")
+    print(f"Total inference time: {t1 - t0:.4f} seconds")
+    print(f"Throughput: {len(X) / (t1 - t0):.2f} samples/second")
+
+    print(f"\nThreshold: {threshold_value:.6f}")
     print(f"Mean reconstruction error: {errors.mean():.6f}")
     print(f"Predicted anomalies: {preds.sum()} / {len(preds)} samples")
 

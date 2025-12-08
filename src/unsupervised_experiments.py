@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 
 from architectures import SimpleAutoencoder, NormalizingModel, Threshold
 from data import device_names, ClientData, FederationData, get_benign_attack_samples_per_device
-from federated_util import init_federated_models, model_aggregation
+from federated_util import init_federated_models, model_aggregation, select_mimicked_client, model_poisoning
 from metrics import BinaryClassificationResult
 from print_util import print_federation_round
 from unsupervised_data import prepare_dataloaders
@@ -65,6 +65,9 @@ def fedavg_autoencoders_train_test(train_val_data: FederationData, local_test_da
     # Initialization of the results
     local_results, new_devices_results, global_thresholds = [], [], []
 
+    # Selection of a client to mimic in case we use the mimic attack
+    mimicked_client_id = select_mimicked_client(params)
+
     for federation_round in range(params.federation_rounds):
         print_federation_round(federation_round, params.federation_rounds)
 
@@ -74,6 +77,9 @@ def fedavg_autoencoders_train_test(train_val_data: FederationData, local_test_da
                                                 train_dls, models)),
                                 params=params, lr_factor=(params.gamma_round ** federation_round),
                                 main_title='Training the clients', color=Color.GREEN)
+        
+        # Model poisoning attacks
+        models = model_poisoning(global_model, models, params, mimicked_client_id=mimicked_client_id, verbose=True)
 
         # Aggregation
         global_model, models = model_aggregation(global_model, models, params, verbose=True)

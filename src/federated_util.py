@@ -93,6 +93,29 @@ def s_resampling(models: List[torch.nn.Module], s: int) -> Tuple[List[torch.nn.M
     return output_models, output_indexes
 
 
+def model_update_scaling(global_model: torch.nn.Module, malicious_clients_models: List[torch.nn.Module], factor: float) -> None:
+    with torch.no_grad():
+        for model in malicious_clients_models:
+            new_state_dict = {}
+            for key, original_param in global_model.state_dict().items():
+                param_delta = model.state_dict()[key] - original_param
+                param_delta = param_delta * factor
+                new_state_dict.update({key: original_param + param_delta})
+            model.load_state_dict(new_state_dict)
+
+
+def model_canceling_attack(global_model: torch.nn.Module, malicious_clients_models: List[torch.nn.Module], n_honest: int) -> None:
+    factor = - n_honest / len(malicious_clients_models)
+    with torch.no_grad():
+        for normalizing_model in malicious_clients_models:
+            new_state_dict = {}
+            for key, original_param in global_model.model.state_dict().items():
+                new_state_dict.update({key: original_param * factor})
+            normalizing_model.model.load_state_dict(new_state_dict)
+            # We only change the internal model of the NormalizingModel. That way we do not actually attack the normalization values
+            # because they are not supposed to change throughout the training anyway.
+
+
 def init_federated_models(train_dls: List[DataLoader], params: SimpleNamespace, architecture: Callable):
     # Initialization of a global model
     n_clients = len(params.clients_devices)
@@ -112,6 +135,25 @@ def init_federated_models(train_dls: List[DataLoader], params: SimpleNamespace, 
 
     models = [deepcopy(global_model) for _ in range(n_clients)]
     return global_model, models
+
+
+def model_poisoning(global_model: torch.nn.Module, models: List[torch.nn.Module], params: SimpleNamespace,
+                    mimicked_client_id: Optional[int] = None, verbose: bool = False) -> List[torch.nn.Module]:
+    malicious_clients_models = [model for client_id, model in enumerate(models) if client_id in params.malicious_clients]
+    n_honest = len(models) - len(malicious_clients_models)
+
+    # Model poisoning attacks
+    if params.model_poisoning is not None:
+        if params.model_poisoning == 'cancel_attack':
+            model_canceling_attack(global_model=global_model, malicious_clients_models=malicious_clients_models, n_honest=n_honest)
+            if verbose:
+                Ctp.print('Performing cancel attack')
+        else:
+            raise ValueError('Wrong value for model_poisoning: ' + str(params.model_poisoning))
+
+    # Rescale the model updates of the malicious clients (if any)
+    model_update_scaling(global_model=global_model, malicious_clients_models=malicious_clients_models, factor=params.model_update_factor)
+    return models
 
 
 # Aggregates the model according to params.aggregation_function, potentially using s-resampling, and distributes the global model back to the clients
